@@ -1,0 +1,32 @@
+DECLARE
+    v_url         VARCHAR2(4000);
+    v_printer     VARCHAR2(100);
+    v_orientation VARCHAR2(10);
+    v_type        VARCHAR2(20);
+    v_use_dialog  BOOLEAN;
+BEGIN
+    -- مثال: القيم يمكن أن تأتي من Items أخرى
+    v_url         := :REPORT_BLOCK.PDF_URL;
+    v_printer     := :REPORT_BLOCK.PRINTER_NAME;   -- "DEFAULT" أو اسم الطابعة
+    v_orientation := :REPORT_BLOCK.ORIENTATION;    -- "PORTRAIT" / "LANDSCAPE"
+    v_type        := :REPORT_BLOCK.PRINTER_TYPE;   -- "OFFICE" / "DOTMATRIX" / "THERMAL"
+    v_use_dialog  := :REPORT_BLOCK.USE_DIALOG;     -- TRUE/FALSE
+
+    -- تعيين الخصائص في الـ Java Bean
+    DIRECT_PRINT_BEAN.SET_PROPERTY('PDF_URL', v_url);
+    DIRECT_PRINT_BEAN.SET_PROPERTY('PRINTER_NAME', v_printer);
+    DIRECT_PRINT_BEAN.SET_PROPERTY('PRINT_ORIENTATION', v_orientation);
+    DIRECT_PRINT_BEAN.SET_PROPERTY('PRINTER_TYPE', v_type);
+    DIRECT_PRINT_BEAN.SET_PROPERTY('USE_PRINT_DIALOG', v_use_dialog);
+
+    -- التحقق من النتيجة من Item PRINT_STATUS
+    IF :PRINT_BLOCK.PRINT_STATUS = 'OK' THEN
+        MESSAGE('تمت الطباعة بنجاح');
+    ELSE
+        MESSAGE('خطأ أثناء الطباعة: ' || :PRINT_BLOCK.PRINT_STATUS);
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        MESSAGE('خطأ غير متوقع: ' || SQLERRM);
+END;
