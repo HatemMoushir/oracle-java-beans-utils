@@ -1,12 +1,11 @@
-package com.com.company.mcdr.printing;
-// By Hatem Moushir 2026 v2.1
+
+package com.company.printing;
+// By Hatem Moushir v2.2
 
 import oracle.forms.handler.IHandler;
 import oracle.forms.properties.ID;
 import oracle.forms.ui.VBean;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.printing.PDFPrintable;
 
 import javax.print.PrintService;
@@ -18,150 +17,117 @@ import java.net.URL;
 
 public class DirectPrintBean extends VBean {
 
-    protected static final ID pPDFURL       = ID.registerProperty("PDF_URL");
-    protected static final ID pOrientation  = ID.registerProperty("PRINT_ORIENTATION"); // PORTRAIT / LANDSCAPE
-    protected static final ID pPrinterName  = ID.registerProperty("PRINTER_NAME");      // printer name or "DEFAULT"
-    protected static final ID pPrinterType  = ID.registerProperty("PRINTER_TYPE");      // OFFICE / DOTMATRIX / THERMAL
-    protected static final ID pUseDialog    = ID.registerProperty("USE_PRINT_DIALOG");   // true / false
+    // ==== Properties ====
+    protected static final ID pPrintURL      = ID.registerProperty("PRINT_URL");
+    protected static final ID pPrinterName   = ID.registerProperty("PRINTER_NAME");
+    protected static final ID pPrinterType   = ID.registerProperty("PRINTER_TYPE");
+    protected static final ID pOrientation   = ID.registerProperty("ORIENTATION");
+    protected static final ID pUseDialog     = ID.registerProperty("USE_DIALOG");
+    protected static final ID pGetError      = ID.registerProperty("GET_ERROR");
 
-    private String m_orientation = "PORTRAIT";
-    private String m_printerName = "DEFAULT";
-    private String m_printerType = "OFFICE";
-    private boolean m_useDialog = false;
-
-    private IHandler m_handler;
+    private String m_errorMessage = "OK";
+    private String m_printerName  = "DEFAULT";
+    private String m_printerType  = "OFFICE";
+    private String m_orientation  = "PORTRAIT";
+    private boolean m_useDialog   = false;
 
     public void init(IHandler handler) {
-        m_handler = handler;
         super.init(handler);
     }
 
-    private PrintService findPrintService(String printerName) {
-        if (printerName == null) return null;
-        PrintService[] services = PrintServiceLookup.lookupPrintServices(null, null);
-        for (PrintService service : services) {
-            if (service.getName().equalsIgnoreCase(printerName)) {
-                return service;
-            }
+    // ==== GET_CUSTOM_PROPERTY ====
+    @Override
+    public Object getProperty(ID id) {
+
+        if (id == pGetError) {
+            return m_errorMessage;
         }
-        return null;
+
+        return super.getProperty(id);
     }
 
+    // ==== SET_CUSTOM_PROPERTY ====
     @Override
-    public boolean setProperty(ID _ID, Object _args) {
+    public boolean setProperty(ID id, Object value) {
+
         try {
-            // ضبط الخصائص
-            if (_ID == pOrientation && _args != null) {
-                String value = _args.toString().toUpperCase();
-                if ("PORTRAIT".equals(value) || "LANDSCAPE".equals(value)) {
-                    m_orientation = value;
-                    return true;
-                }
-            }
 
-            if (_ID == pPrinterName && _args != null) {
-                m_printerName = _args.toString();
+            if (id == pPrinterName && value != null) {
+                m_printerName = value.toString();
                 return true;
             }
 
-            if (_ID == pPrinterType && _args != null) {
-                String value = _args.toString().toUpperCase();
-                if ("OFFICE".equals(value) || "DOTMATRIX".equals(value) || "THERMAL".equals(value)) {
-                    m_printerType = value;
-                    return true;
-                }
-            }
-
-            if (_ID == pUseDialog && _args != null) {
-                m_useDialog = Boolean.parseBoolean(_args.toString());
+            if (id == pPrinterType && value != null) {
+                m_printerType = value.toString().toUpperCase();
                 return true;
             }
 
-            // الطباعة من URL
-            if (_ID == pPDFURL && _args != null) {
+            if (id == pOrientation && value != null) {
+                m_orientation = value.toString().toUpperCase();
+                return true;
+            }
 
-                URL pdfURL = new URL(_args.toString());
+            if (id == pUseDialog && value != null) {
+                m_useDialog = Boolean.parseBoolean(value.toString());
+                return true;
+            }
+
+            // ==== Start Printing ====
+            if (id == pPrintURL && value != null) {
+
+                m_errorMessage = "OK";  // reset
+
+                URL pdfURL = new URL(value.toString());
                 PDDocument document = PDDocument.load(pdfURL.openStream());
 
                 PrinterJob job = PrinterJob.getPrinterJob();
-                PrintService service = null;
 
+                // تحديد الطابعة
                 if (!"DEFAULT".equalsIgnoreCase(m_printerName)) {
-                    service = findPrintService(m_printerName);
-                    if (service == null) {
+                    PrintService[] services =
+                            PrintServiceLookup.lookupPrintServices(null, null);
+
+                    boolean found = false;
+
+                    for (PrintService service : services) {
+                        if (service.getName().equalsIgnoreCase(m_printerName)) {
+                            job.setPrintService(service);
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
                         document.close();
-                        m_handler.setItemProperty("BLOCK_NAME.PRINT_STATUS",
-                                oracle.forms.properties.VM.PROP_TEXT,
-                                "Printer not found: " + m_printerName);
+                        m_errorMessage = "Printer not found: " + m_printerName;
                         return false;
                     }
-                    job.setPrintService(service);
                 }
 
+                // Dialog اختياري
                 if (m_useDialog && !"DEFAULT".equalsIgnoreCase(m_printerName)) {
                     if (!job.printDialog()) {
                         document.close();
-                        m_handler.setItemProperty("BLOCK_NAME.PRINT_STATUS",
-                                oracle.forms.properties.VM.PROP_TEXT,
-                                "User cancelled print");
+                        m_errorMessage = "User cancelled print";
                         return false;
                     }
                 }
 
-                // PDFPrintable مع Scaling ذكي
-                PDFPrintable printable = new PDFPrintable(document, PDFPrintable.SCALE_TO_FIT) {
-                    @Override
-                    public PageFormat getPageFormat(int pageIndex, PrinterJob job) {
-                        PDPage page = document.getPage(pageIndex);
-                        PDRectangle rect = page.getMediaBox();
-                        Paper paper = new Paper();
-
-                        switch (m_printerType) {
-                            case "OFFICE":
-                                paper.setSize(rect.getWidth(), rect.getHeight());
-                                paper.setImageableArea(0, 0, rect.getWidth(), rect.getHeight());
-                                break;
-
-                            case "DOTMATRIX":
-                                // Continuous feed: الطول = ارتفاع PDF، العرض = PDF width أو fixed حسب الطابعة
-                                double widthDM = rect.getWidth();
-                                double heightDM = rect.getHeight();
-                                paper.setSize(widthDM, heightDM);
-                                paper.setImageableArea(0, 0, widthDM, heightDM);
-                                break;
-
-                            case "THERMAL":
-                                // 80mm width ثابت، الطول ديناميكي حسب محتوى PDF
-                                double widthThermal = 226.77; // 80mm
-                                double scale = widthThermal / rect.getWidth();
-                                double heightThermal = rect.getHeight() * scale;
-                                paper.setSize(widthThermal, heightThermal);
-                                paper.setImageableArea(0, 0, widthThermal, heightThermal);
-                                break;
-                        }
-
-                        PageFormat pf = new PageFormat();
-                        pf.setPaper(paper);
-                        pf.setOrientation("LANDSCAPE".equals(m_orientation) ? PageFormat.LANDSCAPE : PageFormat.PORTRAIT);
-                        return pf;
-                    }
-                };
+                PDFPrintable printable =
+                        new PDFPrintable(document, PDFPrintable.SCALE_TO_FIT);
 
                 job.setPrintable(printable);
+
                 job.print();
 
                 document.close();
 
-                m_handler.setItemProperty("BLOCK_NAME.PRINT_STATUS",
-                        oracle.forms.properties.VM.PROP_TEXT, "OK");
-
+                m_errorMessage = "OK";
                 return true;
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            m_handler.setItemProperty("BLOCK_NAME.PRINT_STATUS",
-                    oracle.forms.properties.VM.PROP_TEXT, e.getMessage());
+            m_errorMessage = e.getMessage();
             return false;
         }
 
